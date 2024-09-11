@@ -359,11 +359,13 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
 
     // Else attempt to create a new edit. This will throw if there is an issue
     core.info(`Creating a new Edit for this release`)
+    core.info('here0')
     const insertResult = await androidPublisher.edits.insert({
         auth: options.auth,
         packageName: options.applicationId
     })
     core.info('here1')
+    core.info('insertResult: ' + JSON.stringify(insertResult))
 
     // If we didn't get status 200, i.e. success, propagate the error with valid text
     if (insertResult.status != 200) {
