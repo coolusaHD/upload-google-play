@@ -360,6 +360,20 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
     // Else attempt to create a new edit. This will throw if there is an issue
     core.info(`Creating a new Edit for this release`)
     core.info('here0')
+    let res;
+    try{
+    res= await androidPublisher.edits.insert({
+        auth: options.auth,
+        packageName: options.applicationId
+    })
+    } catch(e) {
+        core.info('error')
+        core.info(JSON.stringify(e))
+    } finally {
+        core.info('finally')
+        core.info(JSON.stringify(res))
+    }
+
     const insertResult = await androidPublisher.edits.insert({
         auth: options.auth,
         packageName: options.applicationId
