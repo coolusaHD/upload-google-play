@@ -363,12 +363,15 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
         auth: options.auth,
         packageName: options.applicationId
     })
+    core.debug('here1')
 
     // If we didn't get status 200, i.e. success, propagate the error with valid text
     if (insertResult.status != 200) {
         core.debug(`Error ${insertResult.status}: ${insertResult.statusText}`)
         throw Error(insertResult.statusText)
     }
+
+    core.debug('here2')
 
     // If the result was successful but we have no ID, somethign went horribly wrong
     if (!insertResult.data.id) {
