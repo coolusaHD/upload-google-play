@@ -6,6 +6,7 @@ import { lstatSync, readFileSync } from "fs";
 
 import { GoogleAuth } from "google-auth-library/build/src/auth/googleauth"
 import JSZip from 'jszip';
+import { Readable } from 'stream';
 import { androidpublisher_v3 } from "@googleapis/androidpublisher";
 import { readLocalizedReleaseNotes } from "./whatsnew";
 
@@ -245,6 +246,7 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
         if (data != null) {
             core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
 
+            core.info('uploading debug symbols')
             await androidPublisher.edits.deobfuscationfiles.upload({
                 auth: options.auth,
                 packageName: options.applicationId,
@@ -253,9 +255,12 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
                 deobfuscationFileType: 'nativeCode',
                 media: {
                     mimeType: 'application/octet-stream',
-                    body: fs.createReadStream(data)
+                    body: Readable.from(data)
                 }
-            })
+            }).catch((error) => {
+                core.error(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Error uploading Debug Symbols file @ ${options.debugSymbols}`);
+                core.error(JSON.stringify(error));
+            });
 
             core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploaded Debug Symbols file @ ${options.debugSymbols}`);
             core.info('finished uploading debug symbols')
