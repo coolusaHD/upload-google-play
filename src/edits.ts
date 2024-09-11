@@ -1,20 +1,23 @@
 import * as core from '@actions/core';
 import * as fs from "fs";
-import { readFileSync, lstatSync } from "fs";
-import JSZip from 'jszip';
-import path = require('path');
-import { Readable } from 'stream';
-
 import * as google from '@googleapis/androidpublisher';
+
+import { lstatSync, readFileSync } from "fs";
+
+import { GoogleAuth } from "google-auth-library/build/src/auth/googleauth"
+import JSZip from 'jszip';
+import { Readable } from 'stream';
 import { androidpublisher_v3 } from "@googleapis/androidpublisher";
+import { readLocalizedReleaseNotes } from "./whatsnew";
+
+import path = require('path');
+
 
 import AndroidPublisher = androidpublisher_v3.Androidpublisher;
 import Apk = androidpublisher_v3.Schema$Apk;
 import Bundle = androidpublisher_v3.Schema$Bundle;
 import Track = androidpublisher_v3.Schema$Track;
 import InternalAppSharingArtifact = androidpublisher_v3.Schema$InternalAppSharingArtifact;
-import { GoogleAuth } from "google-auth-library/build/src/auth/googleauth"
-import { readLocalizedReleaseNotes } from "./whatsnew";
 
 const androidPublisher: AndroidPublisher = google.androidpublisher('v3');
 
@@ -72,6 +75,7 @@ export async function runUpload(
 }
 
 async function uploadToPlayStore(options: EditOptions, releaseFiles: string[]): Promise<string | void> {
+    core.debug(`uploadToPlayStore, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
     const internalSharingDownloadUrls: string[] = []
     
     // Check the 'track' for 'internalsharing', if so switch to a non-track api
@@ -347,6 +351,7 @@ async function uploadBundle(appEditId: string, options: EditOptions, bundleRelea
 }
 
 async function getOrCreateEdit(options: EditOptions): Promise<string> {
+    core.debug(`getOrCreateEdit, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}`)
     // If we already have an ID, just return that
     if (options.existingEditId) {
         return options.existingEditId
@@ -361,6 +366,7 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
 
     // If we didn't get status 200, i.e. success, propagate the error with valid text
     if (insertResult.status != 200) {
+        core.debug(`Error ${insertResult.status}: ${insertResult.statusText}`)
         throw Error(insertResult.statusText)
     }
 
@@ -375,6 +381,7 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
 }
 
 async function uploadReleaseFiles(appEditId: string, options: EditOptions, releaseFiles: string[]): Promise<number[]> {
+    core.debug(`uploadReleaseFiles, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
     const versionCodes: number[] = []
     // Upload all release files
     for (const releaseFile of releaseFiles) {
@@ -387,7 +394,9 @@ async function uploadReleaseFiles(appEditId: string, options: EditOptions, relea
             versionCode = apk.versionCode
         } else if (releaseFile.endsWith('.aab')) {
             // Upload AAB, or throw when something goes wrong
+            core.debug(`Uploading AAB @ ${releaseFile}`)
             const bundle = await uploadBundle(appEditId, options, releaseFile);
+            core.debug(`Bundle: ${JSON.stringify(bundle)}`)
             if (!bundle.versionCode) throw Error('Failed to upload bundle.')
             versionCode = bundle.versionCode
         } else {
