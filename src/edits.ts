@@ -255,7 +255,7 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
                 deobfuscationFileType: 'nativeCode',
                 media: {
                     mimeType: 'application/octet-stream',
-                    body: fs.createReadStream(data)
+                    body: fs.createReadStream(options.debugSymbols)
                 }
             }).catch((error) => {
                 core.error(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Error uploading Debug Symbols file @ ${options.debugSymbols}`);
