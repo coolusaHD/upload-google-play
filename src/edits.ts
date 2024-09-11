@@ -6,7 +6,6 @@ import { lstatSync, readFileSync } from "fs";
 
 import { GoogleAuth } from "google-auth-library/build/src/auth/googleauth"
 import JSZip from 'jszip';
-import { Readable } from 'stream';
 import { androidpublisher_v3 } from "@googleapis/androidpublisher";
 import { readLocalizedReleaseNotes } from "./whatsnew";
 
@@ -372,8 +371,6 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
         core.info(`Error ${insertResult.status}: ${insertResult.statusText}`)
         throw Error(insertResult.statusText)
     }
-
-    core.info('here2')
 
     // If the result was successful but we have no ID, somethign went horribly wrong
     if (!insertResult.data.id) {
