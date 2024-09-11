@@ -75,14 +75,14 @@ export async function runUpload(
 }
 
 async function uploadToPlayStore(options: EditOptions, releaseFiles: string[]): Promise<string | void> {
-    core.debug(`uploadToPlayStore, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
+    core.info(`uploadToPlayStore, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
     const internalSharingDownloadUrls: string[] = []
     
     // Check the 'track' for 'internalsharing', if so switch to a non-track api
     if (options.track === 'internalsharing') {
-        core.debug("Track is Internal app sharing, switch to special upload api")
+        core.info("Track is Internal app sharing, switch to special upload api")
         for (const releaseFile of releaseFiles) {
-            core.debug(`Uploading ${releaseFile}`);
+            core.info(`Uploading ${releaseFile}`);
             const url = await uploadInternalSharingRelease(options, releaseFile)
             internalSharingDownloadUrls.push(url)
         }
@@ -177,14 +177,14 @@ async function validateSelectedTrack(appEditId: string, options: EditOptions): P
 async function addReleasesToTrack(appEditId: string, options: EditOptions, versionCodes: number[]): Promise<Track> {
     const status = options.status
 
-    core.debug(`Creating release for:`);
-    core.debug(`edit=${appEditId}`)
-    core.debug(`track=${options.track}`)
+    core.info(`Creating release for:`);
+    core.info(`edit=${appEditId}`)
+    core.info(`track=${options.track}`)
     if (options.userFraction) {
-        core.debug(`userFraction=${options.userFraction}`)
+        core.info(`userFraction=${options.userFraction}`)
     }
-    core.debug(`status=${status}`)
-    core.debug(`versionCodes=${versionCodes.toString()}`)
+    core.info(`status=${status}`)
+    core.info(`versionCodes=${versionCodes.toString()}`)
 
     const res = await androidPublisher.edits.tracks
         .update({
@@ -214,7 +214,7 @@ async function uploadMappingFile(appEditId: string, versionCode: number, options
     if (options.mappingFile != undefined && options.mappingFile.length > 0) {
         const mapping = readFileSync(options.mappingFile, 'utf-8');
         if (mapping != undefined) {
-            core.debug(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Proguard mapping file @ ${options.mappingFile}`);
+            core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Proguard mapping file @ ${options.mappingFile}`);
             await androidPublisher.edits.deobfuscationfiles.upload({
                 auth: options.auth,
                 packageName: options.applicationId,
@@ -244,7 +244,7 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
         }
 
         if (data != null) {
-            core.debug(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
+            core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
             await androidPublisher.edits.deobfuscationfiles.upload({
                 auth: options.auth,
                 packageName: options.applicationId,
@@ -290,7 +290,7 @@ async function createDebugSymbolZipFile(debugSymbolsPath: string) {
 }
 
 async function internalSharingUploadApk(options: EditOptions, apkReleaseFile: string): Promise<InternalAppSharingArtifact> {
-    core.debug(`[packageName=${options.applicationId}]: Uploading Internal Sharing APK @ ${apkReleaseFile}`);
+    core.info(`[packageName=${options.applicationId}]: Uploading Internal Sharing APK @ ${apkReleaseFile}`);
 
     const res = await androidPublisher.internalappsharingartifacts.uploadapk({
         auth: options.auth,
@@ -305,7 +305,7 @@ async function internalSharingUploadApk(options: EditOptions, apkReleaseFile: st
 }
 
 async function internalSharingUploadBundle(options: EditOptions, bundleReleaseFile: string): Promise<InternalAppSharingArtifact> {
-    core.debug(`[packageName=${options.applicationId}]: Uploading Internal Sharing Bundle @ ${bundleReleaseFile}`);
+    core.info(`[packageName=${options.applicationId}]: Uploading Internal Sharing Bundle @ ${bundleReleaseFile}`);
 
     const res = await androidPublisher.internalappsharingartifacts.uploadbundle({
         auth: options.auth,
@@ -320,7 +320,7 @@ async function internalSharingUploadBundle(options: EditOptions, bundleReleaseFi
 }
 
 async function uploadApk(appEditId: string, options: EditOptions, apkReleaseFile: string): Promise<Apk> {
-    core.debug(`[${appEditId}, packageName=${options.applicationId}]: Uploading APK @ ${apkReleaseFile}`);
+    core.info(`[${appEditId}, packageName=${options.applicationId}]: Uploading APK @ ${apkReleaseFile}`);
 
     const res = await androidPublisher.edits.apks.upload({
         auth: options.auth,
@@ -336,7 +336,7 @@ async function uploadApk(appEditId: string, options: EditOptions, apkReleaseFile
 }
 
 async function uploadBundle(appEditId: string, options: EditOptions, bundleReleaseFile: string): Promise<Bundle> {
-    core.debug(`[${appEditId}, packageName=${options.applicationId}]: Uploading App Bundle @ ${bundleReleaseFile}`);
+    core.info(`[${appEditId}, packageName=${options.applicationId}]: Uploading App Bundle @ ${bundleReleaseFile}`);
     const res = await androidPublisher.edits.bundles.upload({
         auth: options.auth,
         packageName: options.applicationId,
@@ -351,7 +351,7 @@ async function uploadBundle(appEditId: string, options: EditOptions, bundleRelea
 }
 
 async function getOrCreateEdit(options: EditOptions): Promise<string> {
-    core.debug(`getOrCreateEdit, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}`)
+    core.info(`getOrCreateEdit, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}`)
     // If we already have an ID, just return that
     if (options.existingEditId) {
         return options.existingEditId
@@ -363,28 +363,28 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
         auth: options.auth,
         packageName: options.applicationId
     })
-    core.debug('here1')
+    core.info('here1')
 
     // If we didn't get status 200, i.e. success, propagate the error with valid text
     if (insertResult.status != 200) {
-        core.debug(`Error ${insertResult.status}: ${insertResult.statusText}`)
+        core.info(`Error ${insertResult.status}: ${insertResult.statusText}`)
         throw Error(insertResult.statusText)
     }
 
-    core.debug('here2')
+    core.info('here2')
 
     // If the result was successful but we have no ID, somethign went horribly wrong
     if (!insertResult.data.id) {
         throw Error('New edit has no ID, cannot continue.')
     }
 
-    core.debug(`This new edit expires at ${String(insertResult.data.expiryTimeSeconds)}`)
+    core.info(`This new edit expires at ${String(insertResult.data.expiryTimeSeconds)}`)
     // Return the new edit ID
     return insertResult.data.id
 }
 
 async function uploadReleaseFiles(appEditId: string, options: EditOptions, releaseFiles: string[]): Promise<number[]> {
-    core.debug(`uploadReleaseFiles, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
+    core.info(`uploadReleaseFiles, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
     const versionCodes: number[] = []
     // Upload all release files
     for (const releaseFile of releaseFiles) {
@@ -397,9 +397,9 @@ async function uploadReleaseFiles(appEditId: string, options: EditOptions, relea
             versionCode = apk.versionCode
         } else if (releaseFile.endsWith('.aab')) {
             // Upload AAB, or throw when something goes wrong
-            core.debug(`Uploading AAB @ ${releaseFile}`)
+            core.info(`Uploading AAB @ ${releaseFile}`)
             const bundle = await uploadBundle(appEditId, options, releaseFile);
-            core.debug(`Bundle: ${JSON.stringify(bundle)}`)
+            core.info(`Bundle: ${JSON.stringify(bundle)}`)
             if (!bundle.versionCode) throw Error('Failed to upload bundle.')
             versionCode = bundle.versionCode
         } else {

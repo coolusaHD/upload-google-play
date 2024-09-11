@@ -1,9 +1,11 @@
 import * as core from '@actions/core'
 import * as fs from "fs"
-import { runUpload } from "./edits"
-import { validateInAppUpdatePriority, validateReleaseFiles, validateStatus, validateUserFraction } from "./input-validation"
+
 import { unlink, writeFile } from 'fs/promises'
+import { validateInAppUpdatePriority, validateReleaseFiles, validateStatus, validateUserFraction } from "./input-validation"
+
 import pTimeout from 'p-timeout'
+import { runUpload } from "./edits"
 
 export async function run() {
     try {
@@ -94,7 +96,7 @@ export async function run() {
     } finally {
         if (core.getInput('serviceAccountJsonPlainText', { required: false})) {
             // Cleanup our auth file that we created.
-            core.debug('Cleaning up service account json file');
+            core.info('Cleaning up service account json file');
             await unlink('./serviceAccountJson.json');
         }
     }
