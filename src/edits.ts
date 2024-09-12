@@ -253,6 +253,7 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
                 editId: appEditId,
                 apkVersionCode: versionCode,
                 deobfuscationFileType: 'nativeCode',
+                uploadType: 'multipart',
                 media: {
                     mimeType: 'application/octet-stream',
                     body: fs.createReadStream(options.debugSymbols)
