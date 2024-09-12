@@ -257,7 +257,7 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
                     deobfuscationFileType: 'nativeCode',
                     media: {
                         mimeType: 'application/octet-stream',
-                        body: fs.createReadStream(options.debugSymbols)
+                        body: Readable.from(data)
                     }
                 })
             } catch(error){
