@@ -247,7 +247,7 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
             core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
 
             core.info('uploading debug symbols2')
-            await androidPublisher.edits.deobfuscationfiles.upload({
+            const res = await androidPublisher.edits.deobfuscationfiles.upload({
                 auth: options.auth,
                 packageName: options.applicationId,
                 editId: appEditId,
@@ -261,6 +261,8 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
                 core.error(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Error uploading Debug Symbols file @ ${options.debugSymbols}`);
                 core.error(JSON.stringify(error));
             });
+
+            core.info(JSON.stringify(res));
         
             core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploaded Debug Symbols file @ ${options.debugSymbols}`);
             core.info('finished uploading debug symbols')
