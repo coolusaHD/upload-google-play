@@ -247,23 +247,26 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
             core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
 
             core.info('uploading debug symbols2')
-            const res = await androidPublisher.edits.deobfuscationfiles.upload({
-                auth: options.auth,
-                packageName: options.applicationId,
-                editId: appEditId,
-                apkVersionCode: versionCode,
-                deobfuscationFileType: 'nativeCode',
-                uploadType: 'multipart',
-                media: {
-                    mimeType: 'application/octet-stream',
-                    body: fs.createReadStream(options.debugSymbols)
-                }
-            }).catch((error) => {
-                core.error(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Error uploading Debug Symbols file @ ${options.debugSymbols}`);
-                core.error(JSON.stringify(error));
-            });
-
+            let res;
+            try {
+                res = await androidPublisher.edits.deobfuscationfiles.upload({
+                    auth: options.auth,
+                    packageName: options.applicationId,
+                    editId: appEditId,
+                    apkVersionCode: versionCode,
+                    deobfuscationFileType: 'nativeCode',
+                    media: {
+                        mimeType: 'application/octet-stream',
+                        body: fs.createReadStream(options.debugSymbols)
+                    }
+                })
+            } catch(error){
+                    core.error(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Error uploading Debug Symbols file @ ${options.debugSymbols}`);
+                    core.error(JSON.stringify(error));
+            } finally {
+            core.info('Result');
             core.info(JSON.stringify(res));
+            }
         
             core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploaded Debug Symbols file @ ${options.debugSymbols}`);
             core.info('finished uploading debug symbols')
