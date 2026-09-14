@@ -1,11 +1,15 @@
 import * as core from '@actions/core'
 import * as fs from "fs"
-
-import { unlink, writeFile } from 'fs/promises'
-import { validateInAppUpdatePriority, validateReleaseFiles, validateStatus, validateUserFraction } from "./input-validation"
-
-import pTimeout from 'p-timeout'
 import { runUpload } from "./edits"
+import {
+    validateInAppUpdatePriority,
+    validateReleaseFiles,
+    validateStatus,
+    validateTracks,
+    validateUserFraction
+} from "./input-validation"
+import { unlink, writeFile } from 'fs/promises'
+import pTimeout from 'p-timeout'
 
 export async function run() {
     try {
@@ -15,9 +19,12 @@ export async function run() {
         const releaseFile = core.getInput('releaseFile', { required: false });
         const releaseFiles = core.getInput('releaseFiles', { required: false })
             ?.split(',')
-            ?.filter(x => x !== '');
+            ?.filter(x => x !== '') ?? [];
         const releaseName = core.getInput('releaseName', { required: false });
-        const track = core.getInput('track', { required: true });
+        const track = core.getInput('track', { required: false });
+        const tracks = core.getInput('tracks', { required: false })
+            ?.split(',')
+            ?.filter(x => x !== '') ?? [];
         const inAppUpdatePriority = core.getInput('inAppUpdatePriority', { required: false });
         const userFraction = core.getInput('userFraction', { required: false })
         const status = core.getInput('status', { required: false });
@@ -26,6 +33,11 @@ export async function run() {
         const debugSymbols = core.getInput('debugSymbols', { required: false });
         const changesNotSentForReview = core.getInput('changesNotSentForReview', { required: false }) == 'true';
         const existingEditId = core.getInput('existingEditId');
+        const versionCodesToRetain = core.getInput('versionCodesToRetain', { required: false })
+            ?.split(',')
+            ?.filter(x => x !== '')
+            ?.map(x => parseInt(x))
+            ?.filter(x => !Number.isNaN(x));
 
         await validateServiceAccountJson(serviceAccountJsonRaw, serviceAccountJson)
 
@@ -50,11 +62,9 @@ export async function run() {
         }
         await validateInAppUpdatePriority(inAppUpdatePriorityInt)
 
-        // Check release files while maintaining backward compatibility
-        if (releaseFile) {
-            core.warning(`WARNING!! 'releaseFile' is deprecated and will be removed in a future release. Please migrate to 'releaseFiles'`)
-        }
-        const validatedReleaseFiles: string[] = await validateReleaseFiles(releaseFiles ?? [releaseFile])
+        const validatedReleaseFiles: string[] = await validateReleaseFiles(releaseFile, releaseFiles)
+
+        const validatedTracks: string[] = await validateTracks(track, tracks)
 
         if (whatsNewDir != undefined && whatsNewDir.length > 0 && !fs.existsSync(whatsNewDir)) {
             core.warning(`Unable to find 'whatsnew' directory @ ${whatsNewDir}`);
@@ -71,7 +81,7 @@ export async function run() {
         await pTimeout(
             runUpload(
                 packageName,
-                track,
+                validatedTracks,
                 inAppUpdatePriorityInt,
                 userFractionFloat,
                 whatsNewDir,
@@ -81,7 +91,8 @@ export async function run() {
                 changesNotSentForReview,
                 existingEditId,
                 status,
-                validatedReleaseFiles
+                validatedReleaseFiles,
+                versionCodesToRetain
             ),
             {
                 milliseconds: 3.6e+6
@@ -96,7 +107,7 @@ export async function run() {
     } finally {
         if (core.getInput('serviceAccountJsonPlainText', { required: false})) {
             // Cleanup our auth file that we created.
-            core.info('Cleaning up service account json file');
+            core.debug('Cleaning up service account json file');
             await unlink('./serviceAccountJson.json');
         }
     }

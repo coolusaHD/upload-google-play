@@ -9,7 +9,7 @@ This action will help you upload an Android `.apk` or `.aab` (Android App Bundle
 | releaseFiles | The Android release file(s) to upload (.apk or .aab) | Comma-separated paths. Supports glob via [fast-glob](https://github.com/mrmlnc/fast-glob) | true |
 | serviceAccountJsonPlainText | The service account json in plain text, provided via a secret, etc | The contents of your `service-account.json` | true (or serviceAccountJson) |
 | packageName | The package name, or Application Id, of the app you are uploading | A valid package name, e.g. `com.example.myapp`. The packageName must already exist in the play console account, so make sure you upload a manual apk or aab first through the console | true |
-| track | The track in which you want to assign the uploaded app. Defaults to `production` | See [APKs and Tracks](https://developers.google.com/android-publisher/tracks#adding_and_modifying_apks) documentation for calculating your target track name | true |
+| tracks | The tracks in which you want to assign the uploaded app. Defaults to `production` | Comma-separated names. See [APKs and Tracks](https://developers.google.com/android-publisher/tracks#adding_and_modifying_apks) documentation for calculating your target track names | true |
 | releaseName | The release name. Not required to be unique. Default is configured by Google Play Console | A user-friendly update name, e.g. `v1.0.0` | false |
 | inAppUpdatePriority | In-app update priority of the release. All newly added APKs in the release will be considered at this priority. Defaults to `0` | `[0-5]`, where `5` is the highest priority | false |
 | userFraction | Percentage of users who should get the staged version of the app. | `(0.0-1.0)` | false |
@@ -20,7 +20,27 @@ This action will help you upload an Android `.apk` or `.aab` (Android App Bundle
 | changesNotSentForReview | Indicates that the changes in this edit will not be reviewed until they are explicitly sent for review from the Google Play Console. Defaults to `false` | `true` or `false` | `false` |
 | serviceAccountJson | The service account json private key file to authorize the upload request. Can be used instead of `serviceAccountJsonPlainText` to specify a file rather than provide a secret | A path to a valid `service-account.json` file | true (or serviceAccountJsonPlainText) |
 | existingEditId | The ID of an existing edit that has not been completed. If this is supplied, the action will append information to that rather than creating an edit | A valid, unpublished Edit ID | false |
+| versionCodesToRetain | Version codes to retain from previous releases. | Comma-separated version codes. | false |
 | ~~releaseFile~~ | Please switch to using `releaseFiles` as this will be removed in the future | | false |
+| ~~track~~ | Please switch to using `tracks` as this will be removed in the future | | false |
+
+### Using `tracks`
+
+The `track` input is deprecated. Use `tracks` instead.
+
+- Single track:
+
+```yaml
+with:
+  tracks: production
+```
+
+- Multiple tracks (comma-separated):
+
+```yaml
+with:
+  tracks: internal,qa
+```
 
 ## Outputs
 
@@ -28,6 +48,9 @@ This action will help you upload an Android `.apk` or `.aab` (Android App Bundle
 | --- | --- | --- |
 | internalSharingDownloadUrls | INTERNAL_SHARING_DOWNLOAD_URLS | A JSON list containing the download urls for every release file uploaded using the `internalsharing` track |
 | internalSharingDownloadUrl | INTERNAL_SHARING_DOWNLOAD_URL | The download url for the last release file uploaded using the `internalsharing` track |
+committedEditId | COMMITTED_EDIT_ID | The unique identifier of the committed edit. |
+committedEditIdExpiryTimeSeconds | COMMITTED_EDIT_ID_EXPIRY_TIME_SECONDS | Time in seconds until the committed edit expires. |
+ 
 
 ## Example usage
 
@@ -39,7 +62,7 @@ with:
   serviceAccountJsonPlainText: ${{ SERVICE_ACCOUNT_JSON }}
   packageName: com.example.MyApp
   releaseFiles: app/build/outputs/bundle/release/app-release.aab
-  track: production
+  tracks: production
   status: inProgress
   inAppUpdatePriority: 2
   userFraction: 0.33
@@ -92,3 +115,24 @@ distribution/
   ├─ whatsnew-de-DE
   └─ whatsnew-ja-JP
 ```
+
+### I get the error "Precondition check failed"
+This means some required state or store listing requirement hasn’t been met. Verify your track progression and edit state against the [Android Publisher API](https://developers.google.com/android-publisher) reference. Common causes include:
+
+#### First‑time production push
+You may have not yet promoted any AAB/APK through internal‑testing, alpha or beta before targeting `production`.  
+  
+Before you can target `production`, push at least one release through an earlier track. For example:
+
+```yaml
+uses: r0adkll/upload-google-play@v1
+with:
+  # ... other configurations ...
+  tracks: internal
+```
+
+#### Edit conflict
+If you start an edit draft, then make changes to the console (or another draft), committing the original draft will sometimes fail — always create a fresh edit after external changes.
+
+#### Concurrent edits
+Multiple clients may open edits in parallel, but once one is committed all others become stale and may trigger this error.

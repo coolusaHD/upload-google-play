@@ -1,30 +1,27 @@
 import * as core from '@actions/core';
 import * as fs from "fs";
-import * as google from '@googleapis/androidpublisher';
-
-import { lstatSync, readFileSync } from "fs";
-
-import { GoogleAuth } from "google-auth-library/build/src/auth/googleauth"
+import { readFileSync, lstatSync } from "fs";
 import JSZip from 'jszip';
-import { Readable } from 'stream';
-import { androidpublisher_v3 } from "@googleapis/androidpublisher";
-import { readLocalizedReleaseNotes } from "./whatsnew";
-
 import path = require('path');
+import { Readable } from 'stream';
 
+import * as google from '@googleapis/androidpublisher';
+import { androidpublisher_v3 } from "@googleapis/androidpublisher";
 
 import AndroidPublisher = androidpublisher_v3.Androidpublisher;
 import Apk = androidpublisher_v3.Schema$Apk;
 import Bundle = androidpublisher_v3.Schema$Bundle;
 import Track = androidpublisher_v3.Schema$Track;
 import InternalAppSharingArtifact = androidpublisher_v3.Schema$InternalAppSharingArtifact;
+import { GoogleAuth } from "google-auth-library/build/src/auth/googleauth"
+import { readLocalizedReleaseNotes } from "./whatsnew";
 
 const androidPublisher: AndroidPublisher = google.androidpublisher('v3');
 
 export interface EditOptions {
     auth: GoogleAuth;
     applicationId: string;
-    track: string;
+    tracks: string[];
     inAppUpdatePriority: number;
     userFraction?: number;
     whatsNewDir?: string;
@@ -34,11 +31,12 @@ export interface EditOptions {
     status: string;
     changesNotSentForReview?: boolean;
     existingEditId?: string;
+    versionCodesToRetain?: number[]
 }
 
 export async function runUpload(
     packageName: string,
-    track: string,
+    tracks: string[],
     inAppUpdatePriority: number | undefined,
     userFraction: number | undefined,
     whatsNewDir: string | undefined,
@@ -48,7 +46,8 @@ export async function runUpload(
     changesNotSentForReview: boolean,
     existingEditId: string | undefined,
     status: string,
-    validatedReleaseFiles: string[]
+    validatedReleaseFiles: string[],
+    versionCodesToRetain: number[] | undefined
 ) {
     const auth = new google.auth.GoogleAuth({
         scopes: ['https://www.googleapis.com/auth/androidpublisher']
@@ -57,7 +56,7 @@ export async function runUpload(
     const result = await uploadToPlayStore({
         auth: auth,
         applicationId: packageName,
-        track: track,
+        tracks: tracks,
         inAppUpdatePriority: inAppUpdatePriority || 0,
         userFraction: userFraction,
         whatsNewDir: whatsNewDir,
@@ -66,7 +65,8 @@ export async function runUpload(
         name: name,
         changesNotSentForReview: changesNotSentForReview,
         existingEditId: existingEditId,
-        status: status
+        status: status,
+        versionCodesToRetain: versionCodesToRetain
     }, validatedReleaseFiles);
 
     if (result) {
@@ -75,14 +75,12 @@ export async function runUpload(
 }
 
 async function uploadToPlayStore(options: EditOptions, releaseFiles: string[]): Promise<string | void> {
-    core.info(`uploadToPlayStore, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
     const internalSharingDownloadUrls: string[] = []
-    
     // Check the 'track' for 'internalsharing', if so switch to a non-track api
-    if (options.track === 'internalsharing') {
-        core.info("Track is Internal app sharing, switch to special upload api")
+    if (options.tracks[0] === 'internalsharing') {
+        core.debug("Track is Internal app sharing, switch to special upload api")
         for (const releaseFile of releaseFiles) {
-            core.info(`Uploading ${releaseFile}`);
+            core.debug(`Uploading ${releaseFile}`);
             const url = await uploadInternalSharingRelease(options, releaseFile)
             internalSharingDownloadUrls.push(url)
         }
@@ -91,7 +89,7 @@ async function uploadToPlayStore(options: EditOptions, releaseFiles: string[]): 
         const appEditId = await getOrCreateEdit(options)
 
         // Validate the given track
-        await validateSelectedTrack(appEditId, options)
+        await validateSelectedTracks(appEditId, options)
 
         // Upload artifacts to Google Play, and store their version codes
         const versionCodes = await uploadReleaseFiles(appEditId, options, releaseFiles)
@@ -104,8 +102,10 @@ async function uploadToPlayStore(options: EditOptions, releaseFiles: string[]): 
             internalSharingDownloadUrls.push(url);
         }
 
+        const combinedVersionCodes = versionCodes.concat(options.versionCodesToRetain || [])
+
         // Add the uploaded artifacts to the Edit track
-        await addReleasesToTrack(appEditId, options, versionCodes);
+        await addReleasesToTracks(appEditId, options, combinedVersionCodes);
 
         // Commit the pending Edit
         core.info(`Committing the Edit`)
@@ -119,6 +119,13 @@ async function uploadToPlayStore(options: EditOptions, releaseFiles: string[]): 
         // Simple check to see whether commit was successful
         if (res.data.id) {
             core.info(`Successfully committed ${res.data.id}`);
+		
+            core.setOutput("committedEditId", res.data.id);
+            core.setOutput("commitedEditIdExpiryTimeSeconds", res.data.expiryTimeSeconds);
+
+            core.exportVariable("COMMITED_EDIT_ID", res.data.id);
+            core.exportVariable("COMMITED_EDIT_ID_EXPIRY_IN_TIME_SECONDS", res.data.expiryTimeSeconds);
+		
             return res.data.id
         } else {
             core.setFailed(`Error ${res.status}: ${res.statusText}`);
@@ -148,8 +155,13 @@ async function uploadInternalSharingRelease(options: EditOptions, releaseFile: s
     return res.downloadUrl
 }
 
-async function validateSelectedTrack(appEditId: string, options: EditOptions): Promise<void> {
-    core.info(`Validating track '${options.track}'`)
+async function validateSelectedTracks(appEditId: string, options: EditOptions): Promise<void> {
+    core.info(`Validating tracks: '${options.tracks.join(", ")}'`)
+
+    if (options.tracks.includes('internalsharing') && options.tracks.length > 1) {
+        throw Error(`Can't upload to other tracks when internalsharing is requested.`)
+    }
+
     const res = await androidPublisher.edits.tracks.list({
         auth: options.auth,
         editId: appEditId,
@@ -161,60 +173,65 @@ async function validateSelectedTrack(appEditId: string, options: EditOptions): P
         throw Error(res.statusText)
     }
 
-    const allTracks = res.data.tracks;
+    const playTracks = res.data.tracks?.map((t) => t.track);
     // Check whether we actually have any tracks
-    if (!allTracks) {
-        throw Error('No tracks found, unable to validate track.')
+    if (!playTracks) {
+        throw Error('No Google Play tracks found, unable to validate input tracks.')
     }
 
-    // Check whether the track is valid
-    if (allTracks.find(value => value.track == options.track) == undefined) {
-        const allTrackNames = allTracks.map((track) => { return track.track });
-        throw Error(`Track "${options.track}" could not be found. Available tracks are: ${allTrackNames.toString()}`);
+    // Check whether the tracks are valid
+    const invalidTracks = options.tracks.filter(track => !playTracks.includes(track));
+    if (invalidTracks.length > 0) {
+        throw Error(`Track(s) "${invalidTracks.join(", ")}" could not be found. Available tracks are: ${playTracks.toString()}`);
     }
 }
 
-async function addReleasesToTrack(appEditId: string, options: EditOptions, versionCodes: number[]): Promise<Track> {
+async function addReleasesToTracks(appEditId: string, options: EditOptions, versionCodes: number[]): Promise<Track[]> {
     const status = options.status
 
-    core.info(`Creating release for:`);
-    core.info(`edit=${appEditId}`)
-    core.info(`track=${options.track}`)
+    core.debug(`Creating release for:`);
+    core.debug(`edit=${appEditId}`)
+    core.debug(`tracks=${options.tracks.join(',')}`);
     if (options.userFraction) {
-        core.info(`userFraction=${options.userFraction}`)
+        core.debug(`userFraction=${options.userFraction}`)
     }
-    core.info(`status=${status}`)
-    core.info(`versionCodes=${versionCodes.toString()}`)
+    core.debug(`status=${status}`)
+    core.debug(`versionCodes=${versionCodes.toString()}`)
 
-    const res = await androidPublisher.edits.tracks
-        .update({
-            auth: options.auth,
-            editId: appEditId,
-            packageName: options.applicationId,
-            track: options.track,
-            requestBody: {
-                track: options.track,
-                releases: [
-                    {
-                        name: options.name,
-                        userFraction: options.userFraction,
-                        status: status,
-                        inAppUpdatePriority: options.inAppUpdatePriority,
-                        releaseNotes: await readLocalizedReleaseNotes(options.whatsNewDir),
-                        versionCodes: versionCodes.filter(x => x != 0).map(x => x.toString())
-                    }
-                ]
-            }
-        });
+    const tracks: Track[] = [];
 
-    return res.data;
+    for (const track of options.tracks) {
+        const response = await androidPublisher.edits.tracks
+            .update({
+                auth: options.auth,
+                editId: appEditId,
+                packageName: options.applicationId,
+                track: track,
+                requestBody: {
+                    track: track,
+                    releases: [
+                        {
+                            name: options.name,
+                            userFraction: options.userFraction,
+                            status: status,
+                            inAppUpdatePriority: options.inAppUpdatePriority,
+                            releaseNotes: await readLocalizedReleaseNotes(options.whatsNewDir),
+                            versionCodes: versionCodes.filter(x => x != 0).map(x => x.toString())
+                        }
+                    ]
+                }
+            });
+        tracks.push(response.data);
+    }
+
+    return tracks;
 }
 
 async function uploadMappingFile(appEditId: string, versionCode: number, options: EditOptions) {
     if (options.mappingFile != undefined && options.mappingFile.length > 0) {
         const mapping = readFileSync(options.mappingFile, 'utf-8');
         if (mapping != undefined) {
-            core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Proguard mapping file @ ${options.mappingFile}`);
+            core.debug(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Proguard mapping file @ ${options.mappingFile}`);
             await androidPublisher.edits.deobfuscationfiles.upload({
                 auth: options.auth,
                 packageName: options.applicationId,
@@ -244,32 +261,18 @@ async function uploadDebugSymbolsFile(appEditId: string, versionCode: number, op
         }
 
         if (data != null) {
-            core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
-
-            core.info('uploading debug symbols2')
-            let res;
-            try {
-                res = await androidPublisher.edits.deobfuscationfiles.upload({
-                    auth: options.auth,
-                    packageName: options.applicationId,
-                    editId: appEditId,
-                    apkVersionCode: versionCode,
-                    deobfuscationFileType: 'nativeCode',
-                    media: {
-                        mimeType: 'application/octet-stream',
-                        body: Readable.from(data)
-                    }
-                })
-            } catch(error){
-                    core.error(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Error uploading Debug Symbols file @ ${options.debugSymbols}`);
-                    core.error(JSON.stringify(error));
-            } finally {
-            core.info('Result');
-            core.info(JSON.stringify(res));
-            }
-        
-            core.info(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploaded Debug Symbols file @ ${options.debugSymbols}`);
-            core.info('finished uploading debug symbols')
+            core.debug(`[${appEditId}, versionCode=${versionCode}, packageName=${options.applicationId}]: Uploading Debug Symbols file @ ${options.debugSymbols}`);
+            await androidPublisher.edits.deobfuscationfiles.upload({
+                auth: options.auth,
+                packageName: options.applicationId,
+                editId: appEditId,
+                apkVersionCode: versionCode,
+                deobfuscationFileType: 'nativeCode',
+                media: {
+                    mimeType: 'application/octet-stream',
+                    body: Readable.from(data)
+                }
+            })
         }
     }
 }
@@ -304,7 +307,7 @@ async function createDebugSymbolZipFile(debugSymbolsPath: string) {
 }
 
 async function internalSharingUploadApk(options: EditOptions, apkReleaseFile: string): Promise<InternalAppSharingArtifact> {
-    core.info(`[packageName=${options.applicationId}]: Uploading Internal Sharing APK @ ${apkReleaseFile}`);
+    core.debug(`[packageName=${options.applicationId}]: Uploading Internal Sharing APK @ ${apkReleaseFile}`);
 
     const res = await androidPublisher.internalappsharingartifacts.uploadapk({
         auth: options.auth,
@@ -319,7 +322,7 @@ async function internalSharingUploadApk(options: EditOptions, apkReleaseFile: st
 }
 
 async function internalSharingUploadBundle(options: EditOptions, bundleReleaseFile: string): Promise<InternalAppSharingArtifact> {
-    core.info(`[packageName=${options.applicationId}]: Uploading Internal Sharing Bundle @ ${bundleReleaseFile}`);
+    core.debug(`[packageName=${options.applicationId}]: Uploading Internal Sharing Bundle @ ${bundleReleaseFile}`);
 
     const res = await androidPublisher.internalappsharingartifacts.uploadbundle({
         auth: options.auth,
@@ -334,7 +337,7 @@ async function internalSharingUploadBundle(options: EditOptions, bundleReleaseFi
 }
 
 async function uploadApk(appEditId: string, options: EditOptions, apkReleaseFile: string): Promise<Apk> {
-    core.info(`[${appEditId}, packageName=${options.applicationId}]: Uploading APK @ ${apkReleaseFile}`);
+    core.debug(`[${appEditId}, packageName=${options.applicationId}]: Uploading APK @ ${apkReleaseFile}`);
 
     const res = await androidPublisher.edits.apks.upload({
         auth: options.auth,
@@ -350,7 +353,7 @@ async function uploadApk(appEditId: string, options: EditOptions, apkReleaseFile
 }
 
 async function uploadBundle(appEditId: string, options: EditOptions, bundleReleaseFile: string): Promise<Bundle> {
-    core.info(`[${appEditId}, packageName=${options.applicationId}]: Uploading App Bundle @ ${bundleReleaseFile}`);
+    core.debug(`[${appEditId}, packageName=${options.applicationId}]: Uploading App Bundle @ ${bundleReleaseFile}`);
     const res = await androidPublisher.edits.bundles.upload({
         auth: options.auth,
         packageName: options.applicationId,
@@ -365,13 +368,13 @@ async function uploadBundle(appEditId: string, options: EditOptions, bundleRelea
 }
 
 async function getOrCreateEdit(options: EditOptions): Promise<string> {
-    core.info(`getOrCreateEdit, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}`)
     // If we already have an ID, just return that
     if (options.existingEditId) {
         return options.existingEditId
     }
 
     // Else attempt to create a new edit. This will throw if there is an issue
+    core.info(`Creating a new Edit for this release`)
     const insertResult = await androidPublisher.edits.insert({
         auth: options.auth,
         packageName: options.applicationId
@@ -379,7 +382,6 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
 
     // If we didn't get status 200, i.e. success, propagate the error with valid text
     if (insertResult.status != 200) {
-        core.info(`Error ${insertResult.status}: ${insertResult.statusText}`)
         throw Error(insertResult.statusText)
     }
 
@@ -388,13 +390,12 @@ async function getOrCreateEdit(options: EditOptions): Promise<string> {
         throw Error('New edit has no ID, cannot continue.')
     }
 
-    core.info(`This new edit expires at ${String(insertResult.data.expiryTimeSeconds)}`)
+    core.debug(`This new edit expires at ${String(insertResult.data.expiryTimeSeconds)}`)
     // Return the new edit ID
     return insertResult.data.id
 }
 
 async function uploadReleaseFiles(appEditId: string, options: EditOptions, releaseFiles: string[]): Promise<number[]> {
-    core.info(`uploadReleaseFiles, ${Object.keys(options).map(key => `${key}=${options[key]}`).join(', ')}, ${releaseFiles.map(file => `file=${file}`).join(', ')}`)
     const versionCodes: number[] = []
     // Upload all release files
     for (const releaseFile of releaseFiles) {
@@ -407,9 +408,7 @@ async function uploadReleaseFiles(appEditId: string, options: EditOptions, relea
             versionCode = apk.versionCode
         } else if (releaseFile.endsWith('.aab')) {
             // Upload AAB, or throw when something goes wrong
-            core.info(`Uploading AAB @ ${releaseFile}`)
             const bundle = await uploadBundle(appEditId, options, releaseFile);
-            core.info(`Bundle: ${JSON.stringify(bundle)}`)
             if (!bundle.versionCode) throw Error('Failed to upload bundle.')
             versionCode = bundle.versionCode
         } else {
